@@ -26,7 +26,6 @@ jobs:
 
       - name: Create Android project
         run: |
-          # Создаём структуру проекта
           mkdir -p app/src/main/java/com/example/rearguard
           mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/values
@@ -54,7 +53,7 @@ jobs:
           </manifest>
           EOF
 
-          # MainActivity.java (упрощённый)
+          # MainActivity.java
           cat > app/src/main/java/com/example/rearguard/MainActivity.java << 'EOF'
           package com.example.rearguard;
           import android.app.Activity;
@@ -63,8 +62,6 @@ jobs:
           import android.widget.Button;
           import android.widget.TextView;
           import android.widget.Toast;
-          import java.io.BufferedReader;
-          import java.io.InputStreamReader;
 
           public class MainActivity extends Activity {
               private TextView statusText;
@@ -200,6 +197,14 @@ jobs:
 
           # settings.gradle
           echo 'include ":app"' > settings.gradle
+
+          # gradle.properties (ГЛАВНОЕ ИСПРАВЛЕНИЕ!)
+          cat > gradle.properties << 'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          android.suppressUnsupportedCompileSdk=34
+          org.gradle.jvmargs=-Xmx2048m
+          EOF
 
           # gradle-wrapper.properties
           cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
