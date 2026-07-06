@@ -36,19 +36,22 @@ jobs:
           mkdir -p app/src/main/res/mipmap-xxxhdpi
           mkdir -p gradle/wrapper
 
-          # Создаём простую иконку (1x1 пиксель PNG)
+          # Создаём иконку
           echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > app/src/main/res/mipmap-hdpi/ic_launcher.png
           cp app/src/main/res/mipmap-hdpi/ic_launcher.png app/src/main/res/mipmap-mdpi/ic_launcher.png
           cp app/src/main/res/mipmap-hdpi/ic_launcher.png app/src/main/res/mipmap-xhdpi/ic_launcher.png
           cp app/src/main/res/mipmap-hdpi/ic_launcher.png app/src/main/res/mipmap-xxhdpi/ic_launcher.png
           cp app/src/main/res/mipmap-hdpi/ic_launcher.png app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
 
-          # AndroidManifest.xml (упрощённый, без package)
+          # AndroidManifest.xml (С ДОБАВЛЕННЫМИ РАЗРЕШЕНИЯМИ!)
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
               <uses-permission android:name="android.permission.WAKE_LOCK" />
+              <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+              <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+              
               <application
                   android:allowBackup="true"
                   android:icon="@mipmap/ic_launcher"
@@ -64,21 +67,25 @@ jobs:
           </manifest>
           EOF
 
-          # MainActivity.java
+          # MainActivity.java (с запросом разрешений)
           cat > app/src/main/java/com/example/rearguard/MainActivity.java << 'EOF'
           package com.example.rearguard;
           import android.app.Activity;
+          import android.os.Build;
           import android.os.Bundle;
           import android.os.Handler;
+          import android.provider.Settings;
           import android.widget.Button;
           import android.widget.TextView;
           import android.widget.Toast;
+          import android.content.Intent;
 
           public class MainActivity extends Activity {
               private TextView statusText;
               private Button startButton;
               private Handler handler = new Handler();
               private boolean isRunning = false;
+              private static final int REQUEST_OVERLAY_PERMISSION = 1001;
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
@@ -88,13 +95,32 @@ jobs:
                   statusText = findViewById(R.id.statusText);
                   startButton = findViewById(R.id.startButton);
 
+                  // Проверяем разрешения
+                  checkPermissions();
+
                   startButton.setOnClickListener(v -> {
                       if (!isRunning) {
-                          startGuard();
+                          if (checkPermissions()) {
+                              startGuard();
+                          }
                       } else {
                           stopGuard();
                       }
                   });
+              }
+
+              private boolean checkPermissions() {
+                  // Проверяем WRITE_SECURE_SETTINGS (только для Android 12+)
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                      if (!Settings.System.canWrite(this)) {
+                          Toast.makeText(this, "⚠️ Нужно разрешение на изменение системных настроек", Toast.LENGTH_LONG).show();
+                          Intent intent = new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS);
+                          intent.setData(android.net.Uri.parse("package:" + getPackageName()));
+                          startActivity(intent);
+                          return false;
+                      }
+                  }
+                  return true;
               }
 
               private void startGuard() {
