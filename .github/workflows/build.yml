@@ -1,0 +1,216 @@
+name: Build Rear Guard APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        
+      - name: Create Android project
+        run: |
+          mkdir -p app/src/main/java/com/example/rearguard
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
+          
+          # AndroidManifest.xml
+          cat > app/src/main/AndroidManifest.xml << 'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.example.rearguard">
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              <uses-permission android:name="android.permission.WAKE_LOCK" />
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="Rear Guard"
+                  android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          XML
+          
+          # MainActivity.java
+          cat > app/src/main/java/com/example/rearguard/MainActivity.java << 'JAVA'
+          package com.example.rearguard;
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.widget.Button;
+          import android.widget.TextView;
+          import android.widget.Toast;
+          import android.os.Handler;
+          import android.os.Looper;
+          import java.io.BufferedReader;
+          import java.io.InputStreamReader;
+          
+          public class MainActivity extends Activity {
+              private TextView statusText;
+              private Button startButton, stopButton;
+              private Handler handler = new Handler(Looper.getMainLooper());
+              private boolean isRunning = false;
+              
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  setContentView(R.layout.activity_main);
+                  
+                  statusText = findViewById(R.id.statusText);
+                  startButton = findViewById(R.id.startButton);
+                  stopButton = findViewById(R.id.stopButton);
+                  
+                  startButton.setOnClickListener(v -> {
+                      startGuard();
+                      statusText.setText("🟢 Страж активен");
+                      Toast.makeText(this, "Страж запущен!", Toast.LENGTH_SHORT).show();
+                  });
+                  
+                  stopButton.setOnClickListener(v -> {
+                      isRunning = false;
+                      handler.removeCallbacksAndMessages(null);
+                      statusText.setText("🔴 Страж остановлен");
+                      Toast.makeText(this, "Страж остановлен", Toast.LENGTH_SHORT).show();
+                  });
+              }
+              
+              private void startGuard() {
+                  isRunning = true;
+                  handler.post(new Runnable() {
+                      @Override
+                      public void run() {
+                          if (!isRunning) return;
+                          executeCommands();
+                          handler.postDelayed(this, 3000);
+                      }
+                  });
+              }
+              
+              private void executeCommands() {
+                  try {
+                      String[] cmds = {
+                          "settings put global sysui_phone_rotation 2",
+                          "dumpsys deviceidle disable",
+                          "cmd deviceidle whitelist +com.android.systemui",
+                          "echo -17 > /proc/$(pgrep systemui | head -1)/oom_adj"
+                      };
+                      for (String cmd : cmds) {
+                          Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd});
+                          p.waitFor();
+                      }
+                  } catch (Exception e) {
+                      e.printStackTrace();
+                  }
+              }
+          }
+          JAVA
+          
+          # activity_main.xml
+          cat > app/src/main/res/layout/activity_main.xml << 'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:orientation="vertical"
+              android:padding="20dp"
+              android:gravity="center">
+              <TextView
+                  android:id="@+id/statusText"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="⚠️ Не запущен"
+                  android:textSize="18sp"
+                  android:textStyle="bold"
+                  android:layout_marginBottom="30dp"/>
+              <Button
+                  android:id="@+id/startButton"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:text="▶ Запустить страж"
+                  android:textColor="#FFFFFF"
+                  android:backgroundTint="#4CAF50"
+                  android:layout_marginBottom="10dp"/>
+              <Button
+                  android:id="@+id/stopButton"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:text="⏹ Остановить"
+                  android:textColor="#FFFFFF"
+                  android:backgroundTint="#F44336"/>
+          </LinearLayout>
+          XML
+          
+          # build.gradle (app)
+          cat > app/build.gradle << 'GRADLE'
+          apply plugin: 'com.android.application'
+          android {
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.example.rearguard"
+                  minSdk 21
+                  targetSdk 34
+              }
+              namespace 'com.example.rearguard'
+          }
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+          }
+          GRADLE
+          
+          # build.gradle (project)
+          cat > build.gradle << 'GRADLE'
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.1.0'
+              }
+          }
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          GRADLE
+          
+          # settings.gradle
+          echo 'include ":app"' > settings.gradle
+          
+          # gradle-wrapper.properties
+          mkdir -p gradle/wrapper
+          cat > gradle/wrapper/gradle-wrapper.properties << 'PROP'
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.0-bin.zip
+          PROP
+          
+      - name: Grant execute permission
+        run: chmod +x gradlew
+          
+      - name: Build APK
+        run: ./gradlew assembleDebug
+        
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rear-guard
+          path: app/build/outputs/apk/debug/app-debug.apk
